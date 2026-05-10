@@ -1,6 +1,6 @@
 **Scripts Overview**
 
-This document explains the purpose, structure, and usage of the combined Rust app in this workspace, with the old Python scripts kept as references. It's intended to help the next agent or developer quickly understand, run, and modify the code.
+This document explains the purpose, structure, and usage of the Rust app in this workspace. It is intended to help the next developer quickly understand, run, and modify the code.
 
 **Purpose**
 - **Overview:** The project now runs as a single Rust binary that talks to the keyboard over raw HID, decodes Vial/VIA layout data, and renders the live layout with key highlighting.
@@ -8,8 +8,8 @@ This document explains the purpose, structure, and usage of the combined Rust ap
 
 **Files**
 - **Rust app:** [Cargo.toml](Cargo.toml), [src/main.rs](src/main.rs)
-- **Legacy viewer / parser:** [redox_layout_viewer.py](redox_layout_viewer.py)
-- **Legacy renderer / UI:** [redox_layout_window.py](redox_layout_window.py)
+- **Launcher:** [run-redox-layout.sh](run-redox-layout.sh)
+- **Generated snapshot:** [current-layout.json](current-layout.json)
 
 **Rust app**
 - **Role:** Open the keyboard, decode the active layout, render the board, and keep the view updated from live HID state.
@@ -19,10 +19,6 @@ This document explains the purpose, structure, and usage of the combined Rust ap
   - Render cache: prepares drawable boxes and labels so the paint path only iterates cached geometry.
   - Color and label mapping: `color_for_keybind()` and `pretty_bind_label()` control the visual language.
   - Optional snapshot export: `--output current-layout.json` writes the live state to disk for compatibility.
-
-**Legacy scripts**
-- **`redox_layout_viewer.py`**: historical HID/snapshot producer retained for comparison.
-- **`redox_layout_window.py`**: historical GTK renderer retained for comparison.
 
 **How to run**
 - Run the combined Rust app directly:
@@ -53,6 +49,7 @@ cargo run -- --output current-layout.json
 **Next steps / suggestions**
 - Add a small GUI control to nudge alignment (x/y) interactively for users who want manual calibration.
 - Optionally wire the HID device matrix into the UI so it can reflect true physical keypress state even when the window is not focused.
+- Consider moving the HID protocol constants and keycode tables into a small module if you want to split the crate into reusable pieces later.
 
 **Contact / Attribution**
 - This file was generated to help future contributors quickly understand and modify the combined Rust app and the legacy Python references.
