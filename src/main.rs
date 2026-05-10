@@ -1,6 +1,7 @@
 use anyhow::{anyhow, Context, Result};
 use crossbeam_channel::{unbounded, Receiver, Sender};
 use eframe::egui::{self, epaint::TextShape, Align2, Color32, FontId, Pos2, Rect, Shape, Stroke, Vec2};
+use evdev::{enumerate, EventSummary, KeyCode};
 use hidapi::{HidApi, HidDevice};
 use serde::de::{self, Deserializer};
 use serde::{Deserialize, Serialize};
@@ -109,8 +110,15 @@ struct RenderBox {
     keybind: String,
 }
 
+#[derive(Debug, Clone)]
+struct KeyEdge {
+    bind: String,
+    pressed: bool,
+}
+
 fn main() -> Result<()> {
     let args = Args::parse();
+    let (key_tx, key_rx) = unbounded();
 
     let api = HidApi::new().context("failed to initialize hidapi")?;
     let device_info = find_raw_device(&api, args.vid, args.pid)?;
@@ -121,6 +129,7 @@ fn main() -> Result<()> {
     let snapshot = Arc::new(load_snapshot(&device, args.output.clone())?);
     let (tx, rx) = unbounded();
     spawn_layer_reader(device, tx)?;
+    spawn_global_key_reader(key_tx)?;
 
     let native_options = eframe::NativeOptions {
         renderer: eframe::Renderer::Glow,
@@ -140,6 +149,7 @@ fn main() -> Result<()> {
             Ok(Box::new(LayoutApp::new(
                 snapshot,
                 rx,
+                key_rx,
                 args.refresh_ms,
                 args.output,
             )))
@@ -577,6 +587,7 @@ impl Default for StyleState {
 struct LayoutApp {
     snapshot: Arc<Snapshot>,
     rx: Receiver<LayerState>,
+    key_rx: Receiver<KeyEdge>,
     refresh_ms: u64,
     output: Option<PathBuf>,
     state: LayerState,
@@ -591,6 +602,7 @@ impl LayoutApp {
     fn new(
         snapshot: Arc<Snapshot>,
         rx: Receiver<LayerState>,
+        key_rx: Receiver<KeyEdge>,
         refresh_ms: u64,
         output: Option<PathBuf>,
     ) -> Self {
@@ -598,6 +610,7 @@ impl LayoutApp {
         let mut app = Self {
             snapshot,
             rx,
+            key_rx,
             refresh_ms,
             output,
             state: LayerState::default(),
@@ -610,109 +623,6 @@ impl LayoutApp {
         app.rebuild_render_cache();
         app.persist_snapshot();
         app
-    }
-
-    fn key_to_bind(&self, key: egui::Key) -> Option<&'static str> {
-        match key {
-            egui::Key::Escape => Some("KC_ESC"),
-            egui::Key::Tab => Some("KC_TAB"),
-            egui::Key::Enter => Some("KC_ENT"),
-            egui::Key::Backspace => Some("KC_BSPC"),
-            egui::Key::Space => Some("KC_SPC"),
-            egui::Key::Insert => Some("KC_INS"),
-            egui::Key::Delete => Some("KC_DEL"),
-            egui::Key::Home => Some("KC_HOME"),
-            egui::Key::End => Some("KC_END"),
-            egui::Key::PageUp => Some("KC_PGUP"),
-            egui::Key::PageDown => Some("KC_PGDN"),
-            egui::Key::ArrowLeft => Some("KC_LEFT"),
-            egui::Key::ArrowRight => Some("KC_RGHT"),
-            egui::Key::ArrowUp => Some("KC_UP"),
-            egui::Key::ArrowDown => Some("KC_DOWN"),
-            egui::Key::Backtick => Some("KC_GRV"),
-            egui::Key::Minus => Some("KC_MINS"),
-            egui::Key::Equals => Some("KC_EQL"),
-            egui::Key::OpenBracket => Some("KC_LBRC"),
-            egui::Key::CloseBracket => Some("KC_RBRC"),
-            egui::Key::Backslash => Some("KC_BSLS"),
-            egui::Key::Semicolon => Some("KC_SCLN"),
-            egui::Key::Quote => Some("KC_QUOT"),
-            egui::Key::Comma => Some("KC_COMM"),
-            egui::Key::Period => Some("KC_DOT"),
-            egui::Key::Slash => Some("KC_SLSH"),
-            egui::Key::Num0 => Some("KC_0"),
-            egui::Key::Num1 => Some("KC_1"),
-            egui::Key::Num2 => Some("KC_2"),
-            egui::Key::Num3 => Some("KC_3"),
-            egui::Key::Num4 => Some("KC_4"),
-            egui::Key::Num5 => Some("KC_5"),
-            egui::Key::Num6 => Some("KC_6"),
-            egui::Key::Num7 => Some("KC_7"),
-            egui::Key::Num8 => Some("KC_8"),
-            egui::Key::Num9 => Some("KC_9"),
-            egui::Key::A => Some("KC_A"),
-            egui::Key::B => Some("KC_B"),
-            egui::Key::C => Some("KC_C"),
-            egui::Key::D => Some("KC_D"),
-            egui::Key::E => Some("KC_E"),
-            egui::Key::F => Some("KC_F"),
-            egui::Key::G => Some("KC_G"),
-            egui::Key::H => Some("KC_H"),
-            egui::Key::I => Some("KC_I"),
-            egui::Key::J => Some("KC_J"),
-            egui::Key::K => Some("KC_K"),
-            egui::Key::L => Some("KC_L"),
-            egui::Key::M => Some("KC_M"),
-            egui::Key::N => Some("KC_N"),
-            egui::Key::O => Some("KC_O"),
-            egui::Key::P => Some("KC_P"),
-            egui::Key::Q => Some("KC_Q"),
-            egui::Key::R => Some("KC_R"),
-            egui::Key::S => Some("KC_S"),
-            egui::Key::T => Some("KC_T"),
-            egui::Key::U => Some("KC_U"),
-            egui::Key::V => Some("KC_V"),
-            egui::Key::W => Some("KC_W"),
-            egui::Key::X => Some("KC_X"),
-            egui::Key::Y => Some("KC_Y"),
-            egui::Key::Z => Some("KC_Z"),
-            egui::Key::F1 => Some("KC_F1"),
-            egui::Key::F2 => Some("KC_F2"),
-            egui::Key::F3 => Some("KC_F3"),
-            egui::Key::F4 => Some("KC_F4"),
-            egui::Key::F5 => Some("KC_F5"),
-            egui::Key::F6 => Some("KC_F6"),
-            egui::Key::F7 => Some("KC_F7"),
-            egui::Key::F8 => Some("KC_F8"),
-            egui::Key::F9 => Some("KC_F9"),
-            egui::Key::F10 => Some("KC_F10"),
-            egui::Key::F11 => Some("KC_F11"),
-            egui::Key::F12 => Some("KC_F12"),
-            egui::Key::F13 => Some("KC_F13"),
-            egui::Key::F14 => Some("KC_F14"),
-            egui::Key::F15 => Some("KC_F15"),
-            egui::Key::F16 => Some("KC_F16"),
-            egui::Key::F17 => Some("KC_F17"),
-            egui::Key::F18 => Some("KC_F18"),
-            egui::Key::F19 => Some("KC_F19"),
-            egui::Key::F20 => Some("KC_F20"),
-            egui::Key::F21 => Some("KC_F21"),
-            egui::Key::F22 => Some("KC_F22"),
-            egui::Key::F23 => Some("KC_F23"),
-            egui::Key::F24 => Some("KC_F24"),
-            egui::Key::F25 => Some("KC_F25"),
-            egui::Key::F26 => Some("KC_F26"),
-            egui::Key::F27 => Some("KC_F27"),
-            egui::Key::F28 => Some("KC_F28"),
-            egui::Key::F29 => Some("KC_F29"),
-            egui::Key::F30 => Some("KC_F30"),
-            egui::Key::F31 => Some("KC_F31"),
-            egui::Key::F32 => Some("KC_F32"),
-            egui::Key::F33 => Some("KC_F33"),
-            egui::Key::F34 => Some("KC_F34"),
-            egui::Key::F35 => Some("KC_F35"),
-            _ => None,
-        }
     }
 
     fn rebuild_render_cache(&mut self) {
@@ -811,6 +721,16 @@ impl LayoutApp {
         }
     }
 
+    fn update_key_highlights(&mut self) {
+        while let Ok(edge) = self.key_rx.try_recv() {
+            if edge.pressed {
+                self.highlight_binds.insert(edge.bind);
+            } else {
+                self.highlight_binds.remove(&edge.bind);
+            }
+        }
+    }
+
     fn persist_snapshot(&self) {
         if let Some(path) = &self.output {
             let _ = write_snapshot(
@@ -830,29 +750,7 @@ impl eframe::App for LayoutApp {
 
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.update_state_from_channel();
-
-        self.highlight_binds.clear();
-        ctx.input(|input| {
-            let modifiers = input.modifiers;
-            if modifiers.shift {
-                self.highlight_binds.insert("KC_LSFT".to_string());
-            }
-            if modifiers.ctrl || modifiers.command {
-                self.highlight_binds.insert("KC_LCTL".to_string());
-            }
-            if modifiers.alt {
-                self.highlight_binds.insert("KC_LALT".to_string());
-            }
-            if modifiers.mac_cmd {
-                self.highlight_binds.insert("KC_LGUI".to_string());
-            }
-
-            for key in &input.keys_down {
-                if let Some(bind) = self.key_to_bind(*key) {
-                    self.highlight_binds.insert(bind.to_string());
-                }
-            }
-        });
+        self.update_key_highlights();
 
         egui::CentralPanel::default()
             .frame(egui::Frame::none())
@@ -904,6 +802,148 @@ impl eframe::App for LayoutApp {
     }
 }
 
+fn spawn_global_key_reader(tx: Sender<KeyEdge>) -> Result<()> {
+    thread::Builder::new()
+        .name("global-key-reader".into())
+        .spawn(move || {
+            eprintln!("[EVDEV] Global key reader thread started");
+            let mut device_count = 0;
+            for (path, mut device) in enumerate() {
+                device_count += 1;
+                eprintln!("[EVDEV] Found device #{}: {} (path: {:?})", device_count, device.name().unwrap_or("unknown"), path);
+
+                if device.supported_keys().is_none() {
+                    eprintln!("[EVDEV]   -> No supported keys, skipping");
+                    continue;
+                }
+                eprintln!("[EVDEV]   -> Has supported keys, spawning reader");
+
+                let tx = tx.clone();
+                let device_name = device.name().unwrap_or("unknown").to_string();
+                let device_name_clone = device_name.clone();
+                let spawn_result = thread::Builder::new()
+                    .name(format!("evdev-{device_name}"))
+                    .spawn(move || loop {
+                        match device.fetch_events() {
+                            Ok(events) => {
+                                for event in events {
+                                    match event.destructure() {
+                                        EventSummary::Key(_, key_code, 1 | 2) => {
+                                            if let Some(bind) = evdev_keycode_to_bind(key_code) {
+                                                eprintln!("[EVDEV] Key pressed: {:?} -> {}", key_code, bind);
+                                                let _ = tx.send(KeyEdge { bind, pressed: true });
+                                            }
+                                        }
+                                        EventSummary::Key(_, key_code, 0) => {
+                                            if let Some(bind) = evdev_keycode_to_bind(key_code) {
+                                                eprintln!("[EVDEV] Key released: {:?} -> {}", key_code, bind);
+                                                let _ = tx.send(KeyEdge {
+                                                    bind,
+                                                    pressed: false,
+                                                });
+                                            }
+                                        }
+                                        _ => {}
+                                    }
+                                }
+                            }
+                            Err(e) => {
+                                eprintln!("[EVDEV] Error reading from {}: {}", device_name_clone, e);
+                                break;
+                            }
+                        }
+                    });
+                
+                if let Err(e) = spawn_result {
+                    eprintln!("[EVDEV] Failed to spawn reader for {}: {}", device_name, e);
+                }
+            }
+            eprintln!("[EVDEV] Enumeration complete. Found {} total devices.", device_count);
+        })
+        .context("failed to spawn global key reader thread")?;
+    Ok(())
+}
+
+fn evdev_keycode_to_bind(key_code: KeyCode) -> Option<String> {
+    let name = format!("{key_code:?}");
+    let bind = match name.as_str() {
+        "KEY_ESC" => "KC_ESC",
+        "KEY_TAB" => "KC_TAB",
+        "KEY_ENTER" => "KC_ENT",
+        "KEY_SPACE" => "KC_SPC",
+        "KEY_BACKSPACE" => "KC_BSPC",
+        "KEY_INSERT" => "KC_INS",
+        "KEY_DELETE" => "KC_DEL",
+        "KEY_HOME" => "KC_HOME",
+        "KEY_END" => "KC_END",
+        "KEY_PAGEUP" => "KC_PGUP",
+        "KEY_PAGEDOWN" => "KC_PGDN",
+        "KEY_LEFT" => "KC_LEFT",
+        "KEY_RIGHT" => "KC_RGHT",
+        "KEY_UP" => "KC_UP",
+        "KEY_DOWN" => "KC_DOWN",
+        "KEY_GRAVE" => "KC_GRV",
+        "KEY_MINUS" => "KC_MINS",
+        "KEY_EQUAL" => "KC_EQL",
+        "KEY_LEFTBRACE" => "KC_LBRC",
+        "KEY_RIGHTBRACE" => "KC_RBRC",
+        "KEY_BACKSLASH" => "KC_BSLS",
+        "KEY_SEMICOLON" => "KC_SCLN",
+        "KEY_APOSTROPHE" => "KC_QUOT",
+        "KEY_COMMA" => "KC_COMM",
+        "KEY_DOT" => "KC_DOT",
+        "KEY_SLASH" => "KC_SLSH",
+        "KEY_CAPSLOCK" => "KC_CAPS",
+        "KEY_NUMLOCK" => "KC_NLCK",
+        "KEY_PRINT" => "KC_PSCR",
+        "KEY_SCROLLLOCK" => "KC_SCRL",
+        "KEY_PAUSE" => "KC_PAUS",
+        "KEY_LEFTSHIFT" => "KC_LSFT",
+        "KEY_RIGHTSHIFT" => "KC_RSFT",
+        "KEY_LEFTCTRL" => "KC_LCTL",
+        "KEY_RIGHTCTRL" => "KC_RCTL",
+        "KEY_LEFTALT" => "KC_LALT",
+        "KEY_RIGHTALT" => "KC_RALT",
+        "KEY_LEFTMETA" => "KC_LGUI",
+        "KEY_RIGHTMETA" => "KC_RGUI",
+        "KEY_KPENTER" => "KC_PENT",
+        "KEY_KPSLASH" => "KC_PSLH",
+        "KEY_KPASTERISK" => "KC_PAST",
+        "KEY_KPMINUS" => "KC_PMNS",
+        "KEY_KPPLUS" => "KC_PPLS",
+        "KEY_KPDOT" => "KC_PDOT",
+        "KEY_KP0" => "KC_P0",
+        "KEY_KP1" => "KC_P1",
+        "KEY_KP2" => "KC_P2",
+        "KEY_KP3" => "KC_P3",
+        "KEY_KP4" => "KC_P4",
+        "KEY_KP5" => "KC_P5",
+        "KEY_KP6" => "KC_P6",
+        "KEY_KP7" => "KC_P7",
+        "KEY_KP8" => "KC_P8",
+        "KEY_KP9" => "KC_P9",
+        _ => {
+            if let Some(suffix) = name.strip_prefix("KEY_") {
+                if suffix.len() == 1 {
+                    if suffix.chars().all(|ch| ch.is_ascii_uppercase()) {
+                        return Some(format!("KC_{suffix}"));
+                    }
+                    if suffix.chars().all(|ch| ch.is_ascii_digit()) {
+                        return Some(format!("KC_{suffix}"));
+                    }
+                }
+                if let Some(number) = suffix.strip_prefix('F') {
+                    if number.chars().all(|ch| ch.is_ascii_digit()) {
+                        return Some(format!("KC_F{number}"));
+                    }
+                }
+            }
+            return None;
+        }
+    };
+    Some(bind.to_string())
+}
+
 fn draw_box(
     painter: &egui::Painter,
     key_box: &RenderBox,
@@ -917,7 +957,11 @@ fn draw_box(
     } else {
         key_box.fill
     };
-    let stroke = Stroke::new(1.0, Color32::from_rgb(54, 56, 61));
+    let stroke = if highlighted {
+        Stroke::new(2.0, Color32::WHITE)
+    } else {
+        Stroke::new(1.0, Color32::from_rgb(54, 56, 61))
+    };
     let radius = (key_box.w.min(key_box.h) * scale * 0.14).max(2.0);
 
     let rect = Rect::from_min_size(
