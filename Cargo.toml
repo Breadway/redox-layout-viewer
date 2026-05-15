@@ -13,3 +13,5 @@ hidapi = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 xz2 = "0.1"
+resvg = "0.44"
+ab_glyph = "0.2"
