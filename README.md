@@ -13,8 +13,8 @@ Redox Layout Viewer is a small Rust application for watching a Redox keyboard's 
 ## Requirements
 
 - Rust toolchain with `cargo`
-- Linux
-- A compatible Redox keyboard exposing the raw HID interface used by Vial/VIA
+- Linux (confirmed working on Arch with kernel 7.0.3-arch1-2)
+- A redox keyboard flashed with [my fork of vial-qmk](https://github.com/Breadway/vial-qmk/)
 
 ## Build
 
