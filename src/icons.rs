@@ -34,6 +34,8 @@ const ICON_ASSETS: &[(&str, &[u8])] = &[
     ("KC_MSTP", include_bytes!("../assets/Pause.svg")),
     ("KC_WSTP", include_bytes!("../assets/Pause.svg")),
     ("KC_MPLY", include_bytes!("../assets/Play.svg")),
+    ("KC_PGUP", include_bytes!("../assets/PageUp.svg")),
+    ("KC_PGDN", include_bytes!("../assets/PageDown.svg")),
     ("KC_PSCR", include_bytes!("../assets/PrintScreen.svg")),
     ("KC_RGHT", include_bytes!("../assets/RightArrow.svg")),
     ("KC_LSFT", include_bytes!("../assets/Shift.svg")),
